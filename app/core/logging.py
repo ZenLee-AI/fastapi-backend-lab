@@ -1,6 +1,17 @@
 import logging
 from app.core.config import settings
 
+LOG_FORMAT = "%(asctime)s %(levelname)s request_id=%(request_id)s %(message)s"
+
+
+class RequestAwareFormatter(logging.Formatter):
+    """Fallback missing request_id so 3rd-party logs don't break formatting."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        if not hasattr(record, "request_id"):
+            record.request_id = "-"
+        return super().format(record)
+
 
 def setup_logging() -> None:
     level_name = (settings.log_level or "INFO").upper()
@@ -8,8 +19,18 @@ def setup_logging() -> None:
 
     logging.basicConfig(
         level=level,
-        format="%(asctime)s %(levelname)s request_id=%(request_id)s %(message)s",
+        format=LOG_FORMAT,
     )
+
+    root_logger = logging.getLogger()
+    formatter = RequestAwareFormatter(LOG_FORMAT)
+    request_id_filter = RequestIdFilter()
+
+    for handler in root_logger.handlers:
+        handler.setFormatter(formatter)
+        handler.addFilter(request_id_filter)
+
+    root_logger.addFilter(request_id_filter)
 
     # Ensure 3rd-party loggers don't spam too much
     logging.getLogger("uvicorn.error").setLevel(level)
